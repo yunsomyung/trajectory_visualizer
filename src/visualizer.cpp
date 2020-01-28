@@ -3,11 +3,39 @@
 #include <ros/ros.h>
 #include <visualization_msgs/Marker.h>
 #include <nav_msgs/Odometry.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <ackermann_msgs/AckermannDriveStamped.h>
 #include <cmath>
 #include <fstream>
 #include <string>
+#define _USE_MATH_DEFINES
 
 class TrajectoryVisualizer {
+private:
+	ros::NodeHandle nh_;
+	ros::NodeHandle private_nh_;
+	ros::Publisher waypoint_pub_;
+	ros::Publisher trajectory_pub_;
+	ros::Publisher curcourse_viz_pub_;
+	ros::Publisher ctrl_viz_pub_;
+	ros::Subscriber pose_sub_;
+	ros::Subscriber course_sub_;
+	ros::Subscriber ctrl_cmd_steer_sub_;
+	
+	std::ifstream is_;
+
+	std::string file_path_;
+	std::vector<geometry_msgs::Point> waypoints_;
+	std::vector<geometry_msgs::Point> vehicle_pose_;
+	
+	int pose_x_offset_, pose_y_offset_;
+	int waypoint_x_offset_, waypoint_y_offset_;
+
+	float cur_course_;
+	float ctrl_cmd_steer_;
+
+	geometry_msgs::Point temp_pose_;
+
 public:
 	TrajectoryVisualizer(void):private_nh_("~") {
 		initSetup();	
@@ -15,7 +43,11 @@ public:
 	void initSetup(void) {
 		waypoint_pub_ = nh_.advertise<visualization_msgs::Marker>("/waypoint", 1);
 		trajectory_pub_ = nh_.advertise<visualization_msgs::Marker>("/trajectory", 1);
-		odom_sub_ = nh_.subscribe("/odom", 10, &TrajectoryVisualizer::odomCallback, this);
+		curcourse_viz_pub_ = nh_.advertise<nav_msgs::Odometry>("/curcourseViz", 1);
+		ctrl_viz_pub_ = nh_.advertise<nav_msgs::Odometry>("/ctrlsteerViz", 1);
+		pose_sub_ = nh_.subscribe("/current_pose", 10, &TrajectoryVisualizer::poseCallback, this);
+		course_sub_ = nh_.subscribe("/course", 10, &TrajectoryVisualizer::courseCallback, this);
+		ctrl_cmd_steer_sub_ = nh_.subscribe("/ctrl_cmd", 10, &TrajectoryVisualizer::ctrl_cmd_steerCallback, this);
 		initParam();
 		getWaypoints();
 		run();
@@ -27,14 +59,13 @@ public:
 		private_nh_.getParam("waypoint_x_offset", waypoint_x_offset_);
 		private_nh_.getParam("waypoint_y_offset", waypoint_y_offset_);
 	}
-	void odomCallback(const nav_msgs::OdometryConstPtr &odom_msg) {
+	void poseCallback(const geometry_msgs::PoseStampedConstPtr &odom_msg) {
 		visualization_msgs::Marker trajectory;
-		geometry_msgs::Point temp_pose;
 		
-		temp_pose.x = odom_msg->pose.pose.position.x - pose_x_offset_;
-		temp_pose.y = odom_msg->pose.pose.position.y - pose_y_offset_;
+		temp_pose_.x = odom_msg->pose.position.x - pose_x_offset_;
+		temp_pose_.y = odom_msg->pose.position.y - pose_y_offset_;
 		
-		vehicle_pose_.push_back(temp_pose);
+		vehicle_pose_.push_back(temp_pose_);
 			
 		trajectory.header.frame_id = "map";
 		trajectory.header.stamp.fromSec(ros::Time::now().toSec());
@@ -44,7 +75,7 @@ public:
 		trajectory.pose.orientation.w = 1.0;
 		// visualization_msgs::Marker::LINE_STRIP
 		// visualization_msgs::Marker::SPHERE_LIST
-		trajectory.type = visualization_msgs::Marker::LINE_STRIP;
+		trajectory.type = visualization_msgs::Marker::SPHERE_LIST;
 		trajectory.scale.x = 0.1;
 		trajectory.color.g = 1.0f;
 		trajectory.color.a = 1.0f;
@@ -54,7 +85,39 @@ public:
 		std::cout<<"CURRENT TRAJECTORY CONSISTS OF "<<trajectory.points.size()<<"POSES."<<std::endl;
 
 		trajectory_pub_.publish(trajectory);
-	}	
+	}
+
+	void courseCallback(const ackermann_msgs::AckermannDriveStamped::ConstPtr &course_msg) {
+		cur_course_ = course_msg->drive.steering_angle;
+		cur_course_ = (cur_course_*M_PI)/180;
+     
+	}
+
+	void ctrl_cmd_steerCallback(const ackermann_msgs::AckermannDriveStamped::ConstPtr &steer_msg) {
+		ctrl_cmd_steer_ = steer_msg->drive.steering_angle;
+		ctrl_cmd_steer_ = cur_course_ + (ctrl_cmd_steer_*M_PI)/180;
+	}
+	
+	void platformViz(){
+		nav_msgs::Odometry course_viz;
+		nav_msgs::Odometry ctrl_steer_viz;
+
+		course_viz.pose.pose.position.x = temp_pose_.x;
+		course_viz.pose.pose.position.y = temp_pose_.y;
+		course_viz.pose.pose.orientation.w = 1.0;
+
+		course_viz.twist.twist.angular.z = cur_course_;
+		
+		ctrl_steer_viz.pose.pose.position.x = temp_pose_.x;
+		ctrl_steer_viz.pose.pose.position.y = temp_pose_.y;
+		ctrl_steer_viz.pose.pose.orientation.w = 1.0;
+
+		ctrl_steer_viz.twist.twist.angular.z = ctrl_cmd_steer_;
+
+		curcourse_viz_pub_.publish(course_viz);
+		ctrl_viz_pub_.publish(ctrl_steer_viz);
+
+		}
 	void getWaypoints(void) {
 		std::string first_str_buf, second_str_buf, third_str_buf, fourth_str_buf;
 		int first_seg_pos, second_seg_pos, third_seg_pos, fourth_seg_pos; 
@@ -119,25 +182,21 @@ public:
 			loop_rate.sleep();
 		}
 	}
-private:
-	ros::NodeHandle nh_;
-	ros::NodeHandle private_nh_;
-	ros::Publisher waypoint_pub_;
-	ros::Publisher trajectory_pub_;
-	ros::Subscriber odom_sub_;
-	
-	std::ifstream is_;
 
-	std::string file_path_;
-	std::vector<geometry_msgs::Point> waypoints_;
-	std::vector<geometry_msgs::Point> vehicle_pose_;
-	
-	int pose_x_offset_, pose_y_offset_;
-	int waypoint_x_offset_, waypoint_y_offset_;
 };
 
 int main(int argc, char** argv) {
 	ros::init(argc, argv, "trajectory_visualizer_node");
 
+
 	TrajectoryVisualizer tv;
+	ros::Rate r(10);
+	
+
+	  while (ros::ok()) {
+    		tv.platformViz(); 
+    		r.sleep();
+
+  }
+	
 }
