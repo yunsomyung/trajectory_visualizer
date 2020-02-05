@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(trajectory_visualizer)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
- add_compile_options(-std=c++11)
+# add_compile_options(-std=c++11)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -208,12 +208,3 @@ include_directories(
 
 add_executable(visualizer src/visualizer.cpp)
 target_link_libraries(visualizer ${catkin_LIBRARIES})
-
-add_executable(course_publisher src/real_publisher_course.cpp)
-target_link_libraries(course_publisher ${catkin_LIBRARIES})
-
-add_executable(ctrl_publisher src/real_publisher_ctrl.cpp)
-target_link_libraries(ctrl_publisher ${catkin_LIBRARIES})
-
-add_executable(pose_publisher src/real_publisher_pose.cpp)
-target_link_libraries(pose_publisher ${catkin_LIBRARIES})
