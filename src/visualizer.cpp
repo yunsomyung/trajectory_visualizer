@@ -1,3 +1,4 @@
+
 #include <iostream>
 
 #include <ros/ros.h>
@@ -35,6 +36,10 @@ private:
 	float ctrl_cmd_steer_;
 
 	geometry_msgs::Point temp_pose_;
+	geometry_msgs::Point temp_pose_test_;
+
+	int count = 0;
+		
 
 public:
 	TrajectoryVisualizer(void):private_nh_("~") {
@@ -62,10 +67,17 @@ public:
 	void poseCallback(const geometry_msgs::PoseStampedConstPtr &odom_msg) {
 		visualization_msgs::Marker trajectory;
 		
+		if (count != 0) {
+			vehicle_pose_.push_back(temp_pose_test_);
+		}		
+
 		temp_pose_.x = odom_msg->pose.position.x - pose_x_offset_;
 		temp_pose_.y = odom_msg->pose.position.y - pose_y_offset_;
 		
-		vehicle_pose_.push_back(temp_pose_);
+		vehicle_pose_.push_back(temp_pose_);		
+
+		temp_pose_test_.x = temp_pose_.x;
+		temp_pose_test_.y = temp_pose_.y;
 			
 		trajectory.header.frame_id = "map";
 		trajectory.header.stamp.fromSec(ros::Time::now().toSec());
@@ -75,16 +87,22 @@ public:
 		trajectory.pose.orientation.w = 1.0;
 		// visualization_msgs::Marker::LINE_STRIP
 		// visualization_msgs::Marker::SPHERE_LIST
-		trajectory.type = visualization_msgs::Marker::SPHERE_LIST;
-		trajectory.scale.x = 0.1;
+		trajectory.type = visualization_msgs::Marker::ARROW;
+		trajectory.scale.x = 0.2;
+		trajectory.scale.y = 0.3;
+		trajectory.scale.z = 0.2;
 		trajectory.color.g = 1.0f;
 		trajectory.color.a = 1.0f;
 
-		trajectory.points = vehicle_pose_;		
-
+		trajectory.points = vehicle_pose_;
+		
+		vehicle_pose_.clear();
+				
 		std::cout<<"CURRENT TRAJECTORY CONSISTS OF "<<trajectory.points.size()<<"POSES."<<std::endl;
 
 		trajectory_pub_.publish(trajectory);
+
+		count++;
 	}
 
 	void courseCallback(const ackermann_msgs::AckermannDriveStamped::ConstPtr &course_msg) {
@@ -182,6 +200,9 @@ public:
 			loop_rate.sleep();
 		}
 	}
+
+	void test() {
+		}
 
 };
 
