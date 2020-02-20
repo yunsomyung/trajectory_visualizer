@@ -8,6 +8,8 @@
 #include <cmath>
 #include <fstream>
 #include <string>
+#include <tf/transform_broadcaster.h>
+
 #define _USE_MATH_DEFINES
 
 class TrajectoryVisualizer {
@@ -75,8 +77,10 @@ public:
 		trajectory.pose.orientation.w = 1.0;
 		// visualization_msgs::Marker::LINE_STRIP
 		// visualization_msgs::Marker::SPHERE_LIST
-		trajectory.type = visualization_msgs::Marker::SPHERE_LIST;
+		trajectory.type = visualization_msgs::Marker::LINE_STRIP;
 		trajectory.scale.x = 0.1;
+		trajectory.scale.y = 0.1;
+		trajectory.scale.z = 0.5;
 		trajectory.color.g = 1.0f;
 		trajectory.color.a = 1.0f;
 
@@ -99,23 +103,62 @@ public:
 	}
 	
 	void platformViz(){
+
+		geometry_msgs::Quaternion odom_course = tf::createQuaternionMsgFromYaw(cur_course_);
+		geometry_msgs::Quaternion odom_ctrl = tf::createQuaternionMsgFromYaw(ctrl_cmd_steer_);
+
 		nav_msgs::Odometry course_viz;
 		nav_msgs::Odometry ctrl_steer_viz;
+		
+		course_viz.header.stamp = ros::Time::now();
+		ctrl_steer_viz.header.stamp = ros::Time::now();
+
+		course_viz.header.frame_id = "map";
+		ctrl_steer_viz.header.frame_id = "map";
 
 		course_viz.pose.pose.position.x = temp_pose_.x;
 		course_viz.pose.pose.position.y = temp_pose_.y;
-		course_viz.pose.pose.orientation.w = 1.0;
-
-		course_viz.twist.twist.angular.z = cur_course_;
+		course_viz.pose.pose.position.z = 0;
+		course_viz.pose.pose.orientation = odom_course;
 		
 		ctrl_steer_viz.pose.pose.position.x = temp_pose_.x;
 		ctrl_steer_viz.pose.pose.position.y = temp_pose_.y;
-		ctrl_steer_viz.pose.pose.orientation.w = 1.0;
+		ctrl_steer_viz.pose.pose.position.z = 0;
+		ctrl_steer_viz.pose.pose.orientation = odom_ctrl;
 
-		ctrl_steer_viz.twist.twist.angular.z = ctrl_cmd_steer_;
+		ROS_INFO("temp pose: %f",temp_pose_.x);
+		ROS_INFO("temp pose: %f",temp_pose_.y);
 
 		curcourse_viz_pub_.publish(course_viz);
 		ctrl_viz_pub_.publish(ctrl_steer_viz);
+
+		std::string platform_name;
+		platform_name = "platform";
+		
+
+		static tf::TransformBroadcaster br;
+
+		tf::Transform transform;
+		transform.setOrigin( tf::Vector3(temp_pose_.x, temp_pose_.y, 0.0) );
+  		tf::Quaternion q;
+  		q.setRPY(0, 0, ctrl_cmd_steer_);
+  		transform.setRotation(q);
+  		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", platform_name));
+
+		tf::Transform transform1;
+		transform1.setOrigin( tf::Vector3(temp_pose_.x, temp_pose_.y, 0.0) );
+  		tf::Quaternion q1;
+  		q1.setRPY(0, 0, cur_course_);
+  		transform1.setRotation(q1);
+  		br.sendTransform(tf::StampedTransform(transform1, ros::Time::now(), "map", "cur_course"));
+
+		
+
+
+
+
+
+		
 
 		}
 	void getWaypoints(void) {
@@ -177,10 +220,12 @@ public:
 	
 			waypoint_pub_.publish(waypoint_list);
 			
+			TrajectoryVisualizer::platformViz();
 			ros::spinOnce();
 
 			loop_rate.sleep();
 		}
+		
 	}
 
 };
